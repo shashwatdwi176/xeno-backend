@@ -54,8 +54,11 @@ app.set('trust proxy', 1);
 // ====== MIDDLEWARE ======
 app.use(bodyParser.json());
 app.use(cors({
-    origin: process.env.FRONTEND_URL, 
+    origin: [process.env.FRONTEND_URL , 'http://localhost:5173', 'https://xeno-frontend-eight.vercel.app/'], 
     credentials: true, 
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Cookie'],
+    exposedHeaders: ['Set-Cookie']
 }));
 
 // Passport requires sessions, so express-session must come first
@@ -64,10 +67,10 @@ app.use(session({
     resave: false,
     saveUninitialized: false,
     cookie: {
-        secure: false, 
+        secure: process.env.NODE_ENV === 'production', 
         httpOnly: true,
         maxAge: 24 * 60 * 60 * 1000, 
-        sameSite: 'lax'
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax'
     }
 }));
 app.use(passport.initialize());
@@ -86,6 +89,21 @@ app.get('/auth/google/callback',
         res.redirect(process.env.FRONTEND_URL);
     }
 );
+
+
+app.get('/auth/debug', (req, res) => {
+    res.json({
+        isAuthenticated: req.isAuthenticated(),
+        user: req.user || null,
+        session: req.session || null,
+        cookies: req.headers.cookie || null,
+        origin: req.headers.origin || null,
+        referer: req.headers.referer || null,
+        frontendUrl: process.env.FRONTEND_URL,
+        nodeEnv: process.env.NODE_ENV
+    });
+});
+
 
 // Logout route
 app.get('/auth/logout', (req, res) => {
