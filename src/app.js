@@ -6,6 +6,7 @@ const session = require('express-session');
 const passport = require('passport');
 const bodyParser = require('body-parser');
 const cors = require('cors');
+const MongoStore = require('connect-mongo');
 
 // Import routes, services, and models
 const ingestionRoutes = require('./routes/ingestionRoutes');
@@ -209,6 +210,19 @@ app.use('/api/ingestion', isLoggedIn, ingestionRoutes);
 app.use('/api/campaigns', isLoggedIn, campaignRoutes);
 app.get('/api/customers', getCustomers);
 app.get('/api/customers/:customerId', getCustomer);
+
+app.use(session({
+    secret: SESSION_SECRET,
+    resave: false,
+    saveUninitialized: false,
+    store: MongoStore.create({ mongoUrl: MONGO_URI }),
+    cookie: {
+      secure: process.env.NODE_ENV === 'production',
+      httpOnly: true,
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+      maxAge: 24 * 60 * 60 * 1000
+    }
+  }));
 
 app.post('/api/ai/text-to-rules', async (req, res) => {
     try {
