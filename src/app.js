@@ -49,6 +49,8 @@ mongoose.connect(MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
     }
 })();
 
+app.set('trust proxy', 1);
+
 // ====== MIDDLEWARE ======
 app.use(bodyParser.json());
 app.use(cors({
