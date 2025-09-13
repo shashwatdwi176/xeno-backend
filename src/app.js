@@ -52,7 +52,7 @@ mongoose.connect(MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
 // ====== MIDDLEWARE ======
 app.use(bodyParser.json());
 app.use(cors({
-    origin: 'http://localhost:5173', 
+    origin: process.env.FRONTEND_URL, 
     credentials: true, 
 }));
 
@@ -81,7 +81,7 @@ app.get('/auth/google',
 app.get('/auth/google/callback',
     passport.authenticate('google', { failureRedirect: '/' }),
     (req, res) => {
-        res.redirect('http://localhost:5173');
+        res.redirect(process.env.FRONTEND_URL);
     }
 );
 
@@ -91,7 +91,7 @@ app.get('/auth/logout', (req, res) => {
         if (err) {
             return next(err);
         }
-        res.redirect('http://localhost:5173'); 
+        res.redirect(process.env.FRONTEND_URL); 
     });
 });
 
