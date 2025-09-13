@@ -30,6 +30,7 @@ const SESSION_SECRET = process.env.SESSION_SECRET;
 console.log("Loaded .env from:", process.cwd() + "/.env");
 console.log("MONGO_URI:", MONGO_URI);
 console.log("RabbitMQ URL:", RABBITMQ_URL);
+console.log("Frontend URL:", process.env.FRONTEND_URL);
 
 // ====== MONGODB CONNECTION ======
 mongoose.connect(MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
@@ -51,30 +52,74 @@ mongoose.connect(MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true })
 
 app.set('trust proxy', 1);
 
-// ====== MIDDLEWARE ======
-app.use(bodyParser.json());
+// ====== CORS CONFIGURATION - MUST COME BEFORE OTHER MIDDLEWARE ======
+const allowedOrigins = [
+    'https://xeno-frontend-eight.vercel.app',
+    process.env.FRONTEND_URL,
+    'http://localhost:5173',
+    'http://localhost:3000',
+    'https://localhost:3000'
+];
+
+// Remove undefined values
+const filteredOrigins = allowedOrigins.filter(origin => origin);
+
+console.log("Allowed CORS origins:", filteredOrigins);
+
 app.use(cors({
-    origin: [process.env.FRONTEND_URL , 'http://localhost:5173', 'https://xeno-frontend-eight.vercel.app/'], 
-    credentials: true, 
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Cookie'],
-    exposedHeaders: ['Set-Cookie']
+    origin: function (origin, callback) {
+        // Allow requests with no origin (mobile apps, curl, etc.)
+        if (!origin) return callback(null, true);
+        
+        if (filteredOrigins.indexOf(origin) !== -1) {
+            callback(null, true);
+        } else {
+            console.log("CORS blocked origin:", origin);
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+    allowedHeaders: [
+        'Origin',
+        'X-Requested-With', 
+        'Content-Type', 
+        'Accept',
+        'Authorization',
+        'Cookie'
+    ],
+    exposedHeaders: ['Set-Cookie'],
+    optionsSuccessStatus: 200 // Some legacy browsers choke on 204
 }));
 
-// Passport requires sessions, so express-session must come first
+// ====== MIDDLEWARE ======
+app.use(bodyParser.json());
+
+// Session configuration - MUST come after CORS
 app.use(session({
     secret: SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
     cookie: {
-        secure: process.env.NODE_ENV === 'production', 
+        secure: process.env.NODE_ENV === 'production',
         httpOnly: true,
-        maxAge: 24 * 60 * 60 * 1000, 
+        maxAge: 24 * 60 * 60 * 1000,
         sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax'
     }
 }));
+
 app.use(passport.initialize());
 app.use(passport.session());
+
+// Add request logging middleware
+app.use((req, res, next) => {
+    console.log(`${req.method} ${req.path}`, {
+        origin: req.headers.origin,
+        cookies: req.headers.cookie ? 'present' : 'none',
+        authenticated: req.isAuthenticated ? req.isAuthenticated() : 'unknown'
+    });
+    next();
+});
 
 // ====== AUTHENTICATION ROUTES ======
 app.get('/auth/google',
@@ -86,24 +131,10 @@ app.get('/auth/google',
 app.get('/auth/google/callback',
     passport.authenticate('google', { failureRedirect: '/' }),
     (req, res) => {
+        console.log("OAuth callback successful, redirecting to:", process.env.FRONTEND_URL);
         res.redirect(process.env.FRONTEND_URL);
     }
 );
-
-
-app.get('/auth/debug', (req, res) => {
-    res.json({
-        isAuthenticated: req.isAuthenticated(),
-        user: req.user || null,
-        session: req.session || null,
-        cookies: req.headers.cookie || null,
-        origin: req.headers.origin || null,
-        referer: req.headers.referer || null,
-        frontendUrl: process.env.FRONTEND_URL,
-        nodeEnv: process.env.NODE_ENV
-    });
-});
-
 
 // Logout route
 app.get('/auth/logout', (req, res) => {
@@ -117,11 +148,32 @@ app.get('/auth/logout', (req, res) => {
 
 // Added a route to check login status
 app.get('/api/is-logged-in', (req, res) => {
+    console.log("Login status check:", {
+        authenticated: req.isAuthenticated(),
+        user: req.user ? req.user.email : null,
+        session: req.session.id || null
+    });
+    
     if (req.isAuthenticated()) {
         res.status(200).json({ success: true, user: req.user });
     } else {
         res.status(401).json({ success: false, message: 'Not authenticated' });
     }
+});
+
+// Debug route
+app.get('/auth/debug', (req, res) => {
+    res.json({
+        isAuthenticated: req.isAuthenticated(),
+        user: req.user || null,
+        session: req.session || null,
+        cookies: req.headers.cookie || null,
+        origin: req.headers.origin || null,
+        referer: req.headers.referer || null,
+        frontendUrl: process.env.FRONTEND_URL,
+        nodeEnv: process.env.NODE_ENV,
+        allowedOrigins: filteredOrigins
+    });
 });
 
 // ====== PROTECT API ROUTES WITH AUTHENTICATION ======
@@ -219,7 +271,6 @@ app.post('/api/ai/text-to-rules', async (req, res) => {
         res.status(500).json({ success: false, message: 'Failed to generate rules.' });
     }
 });
-
 
 // Root route
 app.get('/', (req, res) => {
