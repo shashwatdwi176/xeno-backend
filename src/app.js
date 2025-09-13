@@ -129,10 +129,21 @@ app.get('/auth/google',
 );
 
 app.get('/auth/google/callback',
-    passport.authenticate('google', { failureRedirect: '/' }),
+    passport.authenticate('google', { 
+        failureRedirect: `${process.env.FRONTEND_URL}?error=auth_failed` 
+    }),
     (req, res) => {
-        console.log("OAuth callback successful, redirecting to:", process.env.FRONTEND_URL);
-        res.redirect(process.env.FRONTEND_URL);
+        console.log("OAuth callback successful for user:", req.user?.email);
+        console.log("Session ID:", req.session.id);
+        
+        // Set session manually to ensure it's saved
+        req.session.save((err) => {
+            if (err) {
+                console.error("Session save error:", err);
+            }
+            console.log("Session saved, redirecting to:", process.env.FRONTEND_URL);
+            res.redirect(`${process.env.FRONTEND_URL}?login=success`);
+        });
     }
 );
 
@@ -148,16 +159,26 @@ app.get('/auth/logout', (req, res) => {
 
 // Added a route to check login status
 app.get('/api/is-logged-in', (req, res) => {
-    console.log("Login status check:", {
-        authenticated: req.isAuthenticated(),
-        user: req.user ? req.user.email : null,
-        session: req.session.id || null
-    });
+    console.log("=== LOGIN STATUS CHECK ===");
+    console.log("Session ID:", req.session.id);
+    console.log("User:", req.user?.email || 'none');
+    console.log("Authenticated:", req.isAuthenticated());
+    console.log("Origin:", req.headers.origin || 'none');
+    console.log("Cookies:", req.headers.cookie ? 'present' : 'none');
+    console.log("========================");
     
     if (req.isAuthenticated()) {
-        res.status(200).json({ success: true, user: req.user });
+        res.status(200).json({ 
+            success: true, 
+            user: req.user,
+            sessionId: req.session.id 
+        });
     } else {
-        res.status(401).json({ success: false, message: 'Not authenticated' });
+        res.status(401).json({ 
+            success: false, 
+            message: 'Not authenticated',
+            sessionId: req.session.id || null
+        });
     }
 });
 
